@@ -489,10 +489,10 @@ sub block_device_action {
       device_op( $device_path, 'delete', '1' );
 
       if ( -e $device_path ) {
-        syslog('debug', "sysfs $device still exists after delete?") if $DEBUG;
+        syslog('debug', "sysfs $device still exists after delete?");
       }
       if ( -e '/dev/' . $device ) {
-        syslog('debug', "$device still exists after delete?") if $DEBUG;
+        syslog('debug', "$device still exists after delete?");
       }
     } elsif ( $action eq 'rescan' ) {
       syslog('debug', "Rescanning: $device") if $DEBUG;
