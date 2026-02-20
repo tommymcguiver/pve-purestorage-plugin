@@ -484,7 +484,13 @@ sub block_device_action {
       syslog('debug', "Removing device: $device") if $DEBUG;
       exec_command( [ 'blockdev', '--flushbufs', '/dev/' . $device ] );
       device_op( $device_path, 'state',  'offline' );
+      my $state = file_read_firstline( $device_path . '/state' );
+      syslog('debug', "Device $device state after offline: $state");
       device_op( $device_path, 'delete', '1' );
+
+      if ( -e '/dev/' . $device_path ) {
+        syslog('debug', "Device $device still exists after delete?") if $DEBUG;
+      }
     } elsif ( $action eq 'rescan' ) {
       syslog('debug', "Rescanning: $device") if $DEBUG;
       device_op( $device_path, 'rescan', '1' );
