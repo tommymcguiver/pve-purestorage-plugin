@@ -330,15 +330,13 @@ sub wait_for {
   while ( $time < $timeout ) {
     if ( &$success() ) {
       if ( $DEBUG && $time > 0 ) {
-        print $debug if $DEBUG >= 2;
-        print ": done in $time sec\n";
+        syslog('debug', "$debug: done in $time sec") if $DEBUG >= 2;
       }
       return 1;
     }
 
     if ( $DEBUG && $time == 0 ) {
-      print $debug;
-      print "\n" if $DEBUG >= 2;
+      syslog('debug', $debug) if $DEBUG >= 2;
     }
 
     select( undef, undef, undef, $delay );
@@ -346,8 +344,8 @@ sub wait_for {
     $time += $delay;
   }
 
-  print $debug                        if $DEBUG >= 2;
-  print ": timeout after $time sec\n" if $DEBUG;
+  syslog('debug', $debug)                        if $DEBUG >= 2;
+  syslog('debug', ": timeout after $time sec") if $DEBUG;
 
   die "Error :: Timeout while waiting for $message\n";
 }
@@ -1241,7 +1239,7 @@ sub purestorage_volume_connection {
   my $response = purestorage_api_call( $scfg, $action, 1, $storeid );
 
   my $message = ( $response->{ errors } ? 'already ' : '' ) . ( $mode ? 'connected to' : 'disconnected from' );
-  print "Info :: Volume \"$volname\" is $message host \"$hname\" on all arrays.\n";
+  syslog('info', "Volume \"$volname\" is $message host \"$hname\" on all arrays.");
   return 1;
 }
 
