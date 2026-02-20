@@ -465,8 +465,8 @@ sub device_op {
   my ( $device_path, $op, $value ) = @_;
 
   open( my $fh, '>', $device_path . '/' . $op ) or die "Error :: Could not open file \"$device_path/$op\" for writing.\n";
-  print $fh $value;
-  close( $fh );
+  print $fh $value or print "Warning :: Failed to write value \"$value\" to \"$device_path/$op\": $!\n";
+  close( $fh ) or print "Warning :: Failed to close file \"$device_path/$op\" after writing: $!\n";
 }
 
 sub block_device_action {
