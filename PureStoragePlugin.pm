@@ -1822,7 +1822,7 @@ sub deactivate_volume {
 
   $class->purestorage_volume_connection( $storeid, $scfg, $volname, 0 );
 
-  print "Info :: Volume \"$volname\" is deactivated.\n";
+  syslog('info', "Volume \"$volname\" is deactivated.");
 
   return 1;
 }
