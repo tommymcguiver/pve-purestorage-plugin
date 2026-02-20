@@ -488,8 +488,11 @@ sub block_device_action {
       syslog('debug', "Device $device state after offline: $state");
       device_op( $device_path, 'delete', '1' );
 
-      if ( -e '/dev/' . $device_path ) {
-        syslog('debug', "Device $device still exists after delete?") if $DEBUG;
+      if ( -e $device_path ) {
+        syslog('debug', "sysfs $device still exists after delete?") if $DEBUG;
+      }
+      if ( -e '/dev/' . $device ) {
+        syslog('debug', "$device still exists after delete?") if $DEBUG;
       }
     } elsif ( $action eq 'rescan' ) {
       syslog('debug', "Rescanning: $device") if $DEBUG;
