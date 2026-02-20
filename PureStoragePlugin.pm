@@ -12,7 +12,7 @@ use PVE::JSONSchema      ();
 use PVE::Network         ();
 use PVE::Tools           qw( file_read_firstline run_command );
 use PVE::INotify         ();
-use PVE::SafeSyslog      ();
+use PVE::SafeSyslog qw(syslog);
 
 use JSON::XS       qw( decode_json encode_json );
 use LWP::UserAgent ();
