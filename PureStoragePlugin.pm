@@ -12,7 +12,7 @@ use PVE::JSONSchema      ();
 use PVE::Network         ();
 use PVE::Tools           qw( file_read_firstline run_command );
 use PVE::INotify         ();
-use PVE::Storage::Plugin ();
+use PVE::SafeSyslog      ();
 
 use JSON::XS       qw( decode_json encode_json );
 use LWP::UserAgent ();
@@ -261,7 +261,7 @@ sub exec_command {
     }
   }
 
-  print "Debug :: execute '" . join( ' ', @$command ) . "'\n" if $DEBUG >= 2;
+  syslog('debug', "execute '" . join( ' ', @$command ) . "'") if $DEBUG >= 2;
 
   if ( $DEBUG < 3 ) {
     $param{ 'quiet' } = 1 unless exists $param{ 'quiet' };
@@ -282,7 +282,7 @@ sub exec_command {
 sub scsi_scan_new {
   my ( $protocol ) = @_;
 
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::scsi_scan_new\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::scsi_scan_new") if $DEBUG;
 
   my $path = '/sys/class/' . $protocol . '_host';
   opendir( my $dh, $path ) or die "Cannot open directory: $!";
@@ -303,7 +303,7 @@ sub scsi_scan_new {
 
   die "Error :: Did not find hosts to scan.\n" unless $count > 0;
 
-  print "Debug :: Scanned $count host" . ( $count > 1 ? 's' : '' ) . " for new devices\n" if $DEBUG;
+  syslog('debug', "Scanned $count host" . ( $count > 1 ? 's' : '' ) . " for new devices") if $DEBUG;
 }
 
 sub multipath_check {
@@ -354,7 +354,7 @@ sub wait_for {
 
 sub prepare_api_params {
   my ( $parms ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::prepare_api_params\n" if $DEBUG >= 2;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::prepare_api_params") if $DEBUG >= 2;
 
   return $parms unless ref( $parms ) eq 'HASH';
 
@@ -436,9 +436,7 @@ sub purestorage_name {
     $name .= $snap;
   }
 
-  print 'Debug :: purestorage_name ::',
-    ( defined( $volname ) ? ' name="' . $volname . '"' : '' ), ( defined( $snapname ) ? ' snap="' . $snapname . '"' : '' ), ' => "' . $name . '"', "\n"
-    if $DEBUG >= 2;
+  syslog('debug', 'purestorage_name ::' . ( defined( $volname ) ? ' name="' . $volname . '"' : '' ) . ( defined( $snapname ) ? ' snap="' . $snapname . '"' : '' ) . ' => "' . $name . '"') if $DEBUG >= 2;
 
   return $name;
 }
@@ -456,12 +454,12 @@ sub get_device_path_wwn {
 
 sub get_device_size {
   my ( $device ) = @_;
-  print "Debug :: get_device_size($device)\n" if $DEBUG;
+  syslog('debug', "get_device_size($device)") if $DEBUG;
 
   my $path = '/sys/block/' . basename( $device ) . '/size';
   my $size = file_read_firstline( $path ) << 9;
 
-  print "Debug :: Device \"$device\" size is $size bytes\n" if $DEBUG;
+  syslog('debug', "Device \"$device\" size is $size bytes") if $DEBUG;
   return $size;
 }
 
@@ -475,7 +473,7 @@ sub device_op {
 
 sub block_device_action {
   my ( $action, @devices ) = @_;
-  print "Debug :: block_device_action($action,@devices)\n" if $DEBUG;
+  syslog('debug', "block_device_action($action,@devices)") if $DEBUG;
 
   foreach my $device ( @devices ) {
     if ( $device !~ /^(sd[a-z]+)$/ ) {
@@ -485,12 +483,12 @@ sub block_device_action {
     $device = $1;    # untaint
     my $device_path = '/sys/block/' . $device . '/device';
     if ( $action eq 'remove' ) {
-      print "Debug :: Removing device: $device\n" if $DEBUG;
+      syslog('debug', "Removing device: $device") if $DEBUG;
       exec_command( [ 'blockdev', '--flushbufs', '/dev/' . $device ] );
       device_op( $device_path, 'state',  'offline' );
       device_op( $device_path, 'delete', '1' );
     } elsif ( $action eq 'rescan' ) {
-      print "Debug :: Rescanning: $device\n" if $DEBUG;
+      syslog('debug', "Rescanning: $device") if $DEBUG;
       device_op( $device_path, 'rescan', '1' );
     } else {
       die "Error :: Unsuported acitonin block_device_action() => $action\n";
@@ -505,7 +503,7 @@ sub block_device_slaves {
   die "Error :: Can't resolve device path for $path\n" unless $device_path =~ /^([\/a-zA-Z0-9_\-\.]+)$/;
   $device_path = $1;    # untaint
 
-  print "Debug :: Device path resolved to \"$device_path\".\n" if $DEBUG;
+  syslog('debug', "Device path resolved to \"$device_path\".") if $DEBUG;
 
   my $device_name = basename( $device_path );
   my $slaves_path = '/sys/block/' . $device_name . '/slaves';
@@ -517,7 +515,7 @@ sub block_device_slaves {
     closedir( $dh );
   }
   if ( @slaves ) {
-    print "Debug :: Disk \"$device_name\" slaves: " . join( ', ', @slaves ) . "\n" if $DEBUG;
+    syslog('debug', "Disk \"$device_name\" slaves: " . join( ', ', @slaves )) if $DEBUG;
   } else {
     warn "Warning :: Disk \"$device_name\" has no slaves.\n";
     push @slaves, $device_name;
@@ -527,7 +525,7 @@ sub block_device_slaves {
 
 sub cleanup_lvm_on_device {
   my ( $wwid ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::cleanup_lvm_on_device\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::cleanup_lvm_on_device") if $DEBUG;
 
   my $cleaned = 0;
 
@@ -564,7 +562,7 @@ sub cleanup_lvm_on_device {
   }
 
   foreach my $lvm ( reverse sort @lvm_to_remove ) {
-    print "Debug :: Removing LVM device: $lvm\n" if $DEBUG;
+    syslog('debug', "Removing LVM device: $lvm") if $DEBUG;
     my $removed = 0;
 
     eval {
@@ -588,7 +586,7 @@ sub cleanup_lvm_on_device {
 
 sub cleanup_partitions_on_device {
   my ( $wwid ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::cleanup_partitions_on_device\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::cleanup_partitions_on_device") if $DEBUG;
 
   my $cleaned = 0;
   my $dm_path = '/dev/mapper/' . $wwid;
@@ -603,7 +601,7 @@ sub cleanup_partitions_on_device {
   closedir( $dh );
 
   foreach my $part ( reverse sort @partitions ) {
-    print "Debug :: Removing partition: $part\n" if $DEBUG;
+    syslog('debug', "Removing partition: $part") if $DEBUG;
     eval {
       run_command( [ get_command_path( 'dmsetup' ), 'remove', '--force', $part ], errfunc => sub { } );
       $cleaned++;
@@ -656,7 +654,7 @@ sub get_token_cache_path {
   if ( !-d $cache_dir ) {
     eval {
       File::Path::make_path( $cache_dir, { mode => 0700 } );
-      print "Debug :: Created token cache directory: $cache_dir\n" if $DEBUG;
+      syslog('debug', "Created token cache directory: $cache_dir") if $DEBUG;
     };
     if ( $@ ) {
       warn "Warning :: Failed to create token cache directory $cache_dir: $@\n";
@@ -673,7 +671,7 @@ sub read_token_cache {
   return undef unless defined $cache_path;
 
   if ( !-f $cache_path ) {
-    print "Debug :: Token cache file does not exist: $cache_path\n" if $DEBUG >= 2;
+    syslog('debug', "Token cache file does not exist: $cache_path") if $DEBUG >= 2;
     return undef;
   }
 
@@ -681,7 +679,7 @@ sub read_token_cache {
   eval {
     my $json_text = PVE::Tools::file_get_contents( $cache_path );
     $token_data = decode_json( $json_text );
-    print "Debug :: Read token cache from: $cache_path\n" if $DEBUG >= 1;
+    syslog('debug', "Read token cache from: $cache_path") if $DEBUG >= 1;
   };
   if ( $@ ) {
     warn "Warning :: Failed to read token cache from $cache_path: $@\n";
@@ -713,7 +711,7 @@ sub write_token_cache {
     rename( $temp_path, $cache_path )
       or die "Cannot rename $temp_path to $cache_path: $!\n";
 
-    print "Debug :: Wrote token cache to: $cache_path\n" if $DEBUG >= 1;
+    syslog('debug', "Wrote token cache to: $cache_path") if $DEBUG >= 1;
   };
   if ( $@ ) {
     warn "Warning :: Failed to write token cache to $cache_path: $@\n";
@@ -740,14 +738,14 @@ sub is_token_valid {
   my $jitter            = 0.05 * ( rand() - 0.5 );    # -2.5% to +2.5%
   my $refresh_threshold = $ttl * ( 0.8 + $jitter );
 
-  print "Debug :: Token validation: now=$now, created_at=$token_data->{ created_at }, age=${age}s, threshold=${refresh_threshold}s\n" if $DEBUG >= 2;
+  syslog('debug', "Token validation: now=$now, created_at=$token_data->{ created_at }, age=${age}s, threshold=${refresh_threshold}s") if $DEBUG >= 2;
 
   if ( $age < $refresh_threshold ) {
-    print "Debug :: Token is valid (age: ${age}s)\n" if $DEBUG >= 1;
+    syslog('debug', "Token is valid (age: ${age}s)") if $DEBUG >= 1;
     return 1;
   }
 
-  print "Debug :: Token needs refresh (age: ${age}s >= threshold: ${refresh_threshold}s)\n" if $DEBUG >= 1;
+  syslog('debug', "Token needs refresh (age: ${age}s >= threshold: ${refresh_threshold}s)") if $DEBUG >= 1;
   return 0;
 }
 
@@ -763,7 +761,7 @@ sub cleanup_expired_cache {
   if ( defined $token_data->{ expires_at } ) {
     my $now = time();
     if ( $now >= $token_data->{ expires_at } ) {
-      print "Debug :: Cleaning up expired token cache: $cache_path\n" if $DEBUG;
+      syslog('debug', "Cleaning up expired token cache: $cache_path") if $DEBUG;
       eval { unlink $cache_path };
       if ( $@ ) {
         warn "Warning :: Failed to delete expired cache $cache_path: $@\n";
@@ -784,7 +782,7 @@ sub load_auth_token {
   my $mem_token_key      = '_auth_token' . $array_index;
   my $mem_request_id_key = '_request_id' . $array_index;
   if ( defined( $scfg->{ $mem_token_key } ) && $scfg->{ $mem_token_key } ne '' ) {
-    print "Debug :: Using cached token from memory\n" if $DEBUG >= 2;
+    syslog('debug', "Using cached token from memory") if $DEBUG >= 2;
     return ( $scfg->{ $mem_token_key }, $scfg->{ $mem_request_id_key }, $cache_path, $ttl );
   }
 
@@ -793,7 +791,7 @@ sub load_auth_token {
     my $cached_token = read_token_cache( $cache_path );
     if ( $cached_token && is_token_valid( $cached_token, $ttl ) ) {
       my $age = time() - $cached_token->{ created_at };
-      print "Debug :: Using cached token from file (age: ${age}s)\n" if $DEBUG >= 1;
+      syslog('debug', "Using cached token from file (age: ${age}s)") if $DEBUG >= 1;
 
       # Update in-memory cache for faster access next time
       $scfg->{ $mem_token_key }      = $cached_token->{ auth_token };
@@ -832,12 +830,12 @@ sub save_token_to_cache {
     if ( $existing && $existing->{ created_at } > $token_data->{ created_at } - 5 ) {
 
       # Another node wrote a token within last 5 seconds, use that instead
-      print "Debug :: Another node already cached a token, skipping write\n" if $DEBUG >= 2;
+      syslog('debug', "Another node already cached a token, skipping write") if $DEBUG >= 2;
       return;
     }
 
     write_token_cache( $config->{ cache_path }, $token_data );
-    print "Debug :: Token cached to file: $config->{ cache_path }\n" if $DEBUG >= 1;
+    syslog('debug', "Token cached to file: $config->{ cache_path }") if $DEBUG >= 1;
   };
 
   if ( $@ ) {
@@ -877,7 +875,7 @@ sub try_cached_token {
   return 0 unless is_token_valid( $cached_token, $config->{ ttl } || 3600 );
 
   my $age = time() - $cached_token->{ created_at };
-  print "Debug :: Using cached token from file (age: ${age}s)\n" if $DEBUG >= 1;
+  syslog('debug', "Using cached token from file (age: ${age}s)") if $DEBUG >= 1;
 
   $config->{ auth_token } = $cached_token->{ auth_token };
   $config->{ request_id } = $cached_token->{ request_id };
@@ -889,7 +887,7 @@ sub try_cached_token {
 
 sub purestorage_api_call {
   my ( $scfg, $action, $all, $storeid ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::purestorage_api_call\n" if $DEBUG >= 3;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::purestorage_api_call") if $DEBUG >= 3;
 
   $all //= 0;
 
@@ -963,7 +961,7 @@ sub purestorage_api_call {
       $success_count++;
       $last_success_error   = $error;
       $last_success_content = $content;
-      print "Debug :: Array " . ( $i + 1 ) . " ($url) succeeded\n" if $DEBUG >= 2;
+      syslog('debug', "Array " . ( $i + 1 ) . " ($url) succeeded") if $DEBUG >= 2;
     }
 
     # Stop on critical authentication error (cannot continue)
@@ -991,7 +989,7 @@ sub purestorage_api_call {
   if ( $all && $success_count > 0 ) {
     $error   = $last_success_error;
     $content = $last_success_content;
-    print "Debug :: Processed $array_count array(s), $success_count succeeded\n" if $DEBUG >= 2;
+    syslog('debug', "Processed $array_count array(s), $success_count succeeded") if $DEBUG >= 2;
   }
 
   # Handle fatal errors
@@ -1046,12 +1044,12 @@ sub purestorage_http_request {
         unless ( try_cached_token( $config ) ) {
 
           # Request new token
-          print "Debug :: Requesting new session token\n" if $DEBUG >= 1;
+          syslog('debug', "Requesting new session token") if $DEBUG >= 1;
           ( $error, $content ) = purestorage_http_request( $config, 'login', 'POST', 1 );
 
           # On failure, try cache again (another node may have succeeded)
           if ( $error > ERROR_SUCCESS ) {
-            print "Debug :: Login failed, checking if another node cached a token\n" if $DEBUG >= 2;
+            syslog('debug', "Login failed, checking if another node cached a token") if $DEBUG >= 2;
             unless ( try_cached_token( $config ) ) {
               return ( $error, $content );
             }
@@ -1059,7 +1057,7 @@ sub purestorage_http_request {
         }
         $token_state = TOKEN_STATE_CACHED;
       } else {
-        print "Debug :: Using existing session token\n" if $DEBUG >= 2;
+        syslog('debug', "Using existing session token") if $DEBUG >= 2;
       }
       $headers->header( 'x-auth-token' => $config->{ auth_token } );
     }
@@ -1074,14 +1072,14 @@ sub purestorage_http_request {
     if ( $error && $token_state == TOKEN_STATE_CACHED && $response->code == 401 ) {
       $retry_count++;
       if ( $retry_count <= $max_retries ) {
-        print "Debug :: Session token expired (401), retry $retry_count/$max_retries\n" if $DEBUG >= 1;
+        syslog('debug', "Session token expired (401), retry $retry_count/$max_retries") if $DEBUG >= 1;
 
         # Save current token to detect if cache has newer version
         my $old_token = $config->{ auth_token };
 
         # Try cache first - another node may have already refreshed
         if ( try_cached_token( $config ) && $config->{ auth_token } ne $old_token ) {
-          print "Debug :: Using refreshed token from another node\n" if $DEBUG >= 2;
+          syslog('debug', "Using refreshed token from another node") if $DEBUG >= 2;
           $token_state = TOKEN_STATE_CACHED;
           next;
         }
@@ -1091,7 +1089,7 @@ sub purestorage_http_request {
         $token_state = TOKEN_STATE_NEEDED;
         next;
       } else {
-        print "Debug :: Max retries ($max_retries) reached, giving up\n" if $DEBUG >= 1;
+        syslog('debug', "Max retries ($max_retries) reached, giving up") if $DEBUG >= 1;
         last;
       }
     }
@@ -1133,7 +1131,7 @@ sub purestorage_http_request {
 
 sub purestorage_list_volumes {
   my ( $class, $scfg, $vmid, $storeid, $destroyed ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::purestorage_list_volumes\n" if $DEBUG >= 2;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::purestorage_list_volumes") if $DEBUG >= 2;
 
   $vmid = '*' unless defined( $vmid );
   my $names = "vm-$vmid-disk-*,vm-$vmid-cloudinit,vm-$vmid-state-*";
@@ -1180,7 +1178,7 @@ sub purestorage_get_volumes {
 
 sub purestorage_get_volume_info {
   my ( $class, $scfg, $volname, $storeid, $destroyed ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::purestorage_get_volume_info\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::purestorage_get_volume_info") if $DEBUG;
 
   my $volumes = $class->purestorage_get_volumes( $scfg, $volname, $storeid, $destroyed );
   foreach my $volume ( @$volumes ) {
@@ -1198,7 +1196,7 @@ sub purestorage_get_existing_volume_info {
 
 sub purestorage_get_wwn {
   my ( $class, $scfg, $volname ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::purestorage_get_wwn\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::purestorage_get_wwn") if $DEBUG;
 
   my $volume = $class->purestorage_get_existing_volume_info( $scfg, $volname );
   return get_device_path_wwn( $volume->{ serial } ) if $volume;
@@ -1211,7 +1209,7 @@ sub purestorage_volume_connection {
   my ( $class, $storeid, $scfg, $volname, $mode ) = @_;
 
   my $method = $mode ? 'POST' : 'DELETE';
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::purestorage_volume_connection :: $method\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::purestorage_volume_connection :: $method") if $DEBUG;
 
   my $hname    = PVE::INotify::nodename();
   my $hgsuffix = $scfg->{ hgsuffix } // $default_hgsuffix;
@@ -1249,7 +1247,7 @@ sub purestorage_volume_connection {
 
 sub purestorage_create_volume {
   my ( $class, $scfg, $volname, $size, $storeid ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::purestorage_create_volume\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::purestorage_create_volume") if $DEBUG;
 
   my $action = {
     name   => 'create volume',
@@ -1269,7 +1267,7 @@ sub purestorage_create_volume {
 
 sub purestorage_remove_volume {
   my ( $class, $scfg, $volname, $storeid, $eradicate ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::purestorage_remove_volume\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::purestorage_remove_volume") if $DEBUG;
 
   if ( $volname =~ /^vm-(\d+)-(cloudinit|state-.+)/ ) {
     $eradicate = 1;
@@ -1283,7 +1281,7 @@ sub purestorage_remove_volume {
     my ( $path, $wwid ) = get_device_path_wwn( $volume->{ serial } );
 
     if ( $wwid ne '' && -e "/dev/mapper/$wwid" ) {
-      print "Debug :: Cleaning up local device mappings for $wwid\n" if $DEBUG;
+      syslog('debug', "Cleaning up local device mappings for $wwid") if $DEBUG;
 
       # 1. Remove LVM mappings on top of the device
       cleanup_lvm_on_device( $wwid );
@@ -1293,7 +1291,7 @@ sub purestorage_remove_volume {
 
       # 3. Remove multipath device
       if ( multipath_check( $wwid ) ) {
-        print "Debug :: Removing multipath device $wwid\n" if $DEBUG;
+        syslog('debug', "Removing multipath device $wwid") if $DEBUG;
         exec_command( [ 'multipath', '-f', $wwid ], 0 );
       }
     }
@@ -1301,7 +1299,7 @@ sub purestorage_remove_volume {
 
   # Disconnect volume from all hosts on all arrays before destroying
   # For Active Cluster: get connections from first array (they are synced) and disconnect from all hosts
-  print "Debug :: Disconnecting volume from all hosts on all arrays\n" if $DEBUG >= 2;
+  syslog('debug', "Disconnecting volume from all hosts on all arrays") if $DEBUG >= 2;
   my $pure_volname = purestorage_name( $scfg, $volname );
 
   # Get list of all connections (from first array - in Active Cluster connections are synced)
@@ -1316,7 +1314,7 @@ sub purestorage_remove_volume {
   my @connections          = @{ $connections_response->{ items } || [] };
 
   if ( @connections ) {
-    print "Debug :: Found " . scalar( @connections ) . " connection(s) for volume \"$volname\"\n" if $DEBUG >= 1;
+    syslog('debug', "Found " . scalar( @connections ) . " connection(s) for volume \"$volname\"") if $DEBUG >= 1;
 
     # Collect unique hostnames
     my %unique_hosts;
@@ -1327,7 +1325,7 @@ sub purestorage_remove_volume {
 
     # Disconnect from each unique host on all arrays
     foreach my $hostname ( keys %unique_hosts ) {
-      print "Debug :: Disconnecting from host \"$hostname\" on all arrays\n" if $DEBUG >= 2;
+      syslog('debug', "Disconnecting from host \"$hostname\" on all arrays") if $DEBUG >= 2;
 
       my $disconnect_action = {
         name   => 'delete volume connection',
@@ -1345,7 +1343,7 @@ sub purestorage_remove_volume {
     }
     print "Info :: Volume \"$volname\" disconnected from " . scalar( keys %unique_hosts ) . " host(s) on all arrays.\n";
   } else {
-    print "Debug :: No connections found for volume \"$volname\"\n" if $DEBUG >= 2;
+    syslog('debug', "No connections found for volume \"$volname\"") if $DEBUG >= 2;
   }
   my $params = { names => $pure_volname };
   my $action = {
@@ -1383,7 +1381,7 @@ sub purestorage_remove_volume {
 
 sub purestorage_resize_volume {
   my ( $class, $scfg, $storeid, $volname, $size ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::purestorage_resize_volume\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::purestorage_resize_volume") if $DEBUG;
 
   my $action = {
     name   => 'resize volume',
@@ -1408,11 +1406,11 @@ sub purestorage_resize_volume {
   block_device_action( 'rescan', @slaves );
 
   if ( multipath_check( $wwid ) ) {
-    print "Debug :: Device \"$wwid\" is a multipath device. Proceeding with resizing.\n" if $DEBUG;
+    syslog('debug', "Device \"$wwid\" is a multipath device. Proceeding with resizing.") if $DEBUG;
     exec_command( [ 'multipathd', 'resize', 'map', $wwid ] );
   }
 
-  print "Debug :: Expected size = $size\n" if $DEBUG;
+  syslog('debug', "Expected size = $size") if $DEBUG;
 
   my $new_size;
   my $updated_size = sub {
@@ -1423,7 +1421,7 @@ sub purestorage_resize_volume {
   # FIXME: With the current implementation we may not need to wait
   wait_for( $updated_size, "volume \"$volname\" size update" );
 
-  print "Debug :: New size detected for volume \"$volname\": $new_size bytes.\n" if $DEBUG;
+  syslog('debug', "New size detected for volume \"$volname\": $new_size bytes.") if $DEBUG;
 
   print "Info :: Volume \"$volname\" is resized.\n";
 
@@ -1432,7 +1430,7 @@ sub purestorage_resize_volume {
 
 sub purestorage_rename_volume {
   my ( $class, $scfg, $storeid, $source_volname, $target_volname ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::purestorage_rename_volume\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::purestorage_rename_volume") if $DEBUG;
 
   my $action = {
     name   => 'rename volume',
@@ -1451,7 +1449,7 @@ sub purestorage_rename_volume {
 
 sub purestorage_snap_volume_create {
   my ( $class, $scfg, $storeid, $snap_name, $volname ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::purestorage_snap_volume_create\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::purestorage_snap_volume_create") if $DEBUG;
 
   my $action = {
     name   => 'create volume snapshot',
@@ -1471,7 +1469,7 @@ sub purestorage_snap_volume_create {
 
 sub purestorage_volume_restore {
   my ( $class, $scfg, $storeid, $volname, $svolname, $snap, $overwrite ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::purestorage_volume_restore\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::purestorage_volume_restore") if $DEBUG;
 
   my $params = { names => purestorage_name( $scfg, $volname ) };
   $params->{ overwrite } = $overwrite ? 'true' : 'false' if defined $overwrite;
@@ -1502,7 +1500,7 @@ sub purestorage_volume_restore {
 
 sub purestorage_snap_volume_delete {
   my ( $class, $scfg, $storeid, $snap_name, $volname ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::purestorage_snap_volume_delete\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::purestorage_snap_volume_delete") if $DEBUG;
 
   my $params = { names => purestorage_name( $scfg, $volname, $snap_name ) };
   my $action = {
@@ -1539,7 +1537,7 @@ sub purestorage_snap_volume_delete {
 
 sub parse_volname {
   my ( $class, $volname ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::parse_volname\n" if $DEBUG >= 3;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::parse_volname") if $DEBUG >= 3;
 
   if ( $volname =~ m/^(vm|base)-(\d+)-(\S+)$/ ) {
     my $vtype = ( $1 eq "vm" ) ? "images" : "base";    # Determine volume type
@@ -1556,7 +1554,7 @@ sub parse_volname {
 
 sub filesystem_path {
   my ( $class, $scfg, $volname, $snapname ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::filesystem_path\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::filesystem_path") if $DEBUG;
 
   die "Error :: filesystem_path: snapshot is not implemented ($snapname)\n" if defined( $snapname );
 
@@ -1574,13 +1572,13 @@ sub filesystem_path {
 
 sub create_base {
   my ( $class, $storeid, $scfg, $volname ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::create_base\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::create_base") if $DEBUG;
   die "Error :: Creating base image is currently unimplemented.\n";
 }
 
 sub clone_image {
   my ( $class, $scfg, $storeid, $volname, $vmid, $snap ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::clone_image\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::clone_image") if $DEBUG;
 
   my $name = $class->find_free_diskname( $storeid, $scfg, $vmid );
 
@@ -1591,7 +1589,7 @@ sub clone_image {
 
 sub find_free_diskname {
   my ( $class, $storeid, $scfg, $vmid, $fmt, $add_fmt_suffix ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::find_free_diskname\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::find_free_diskname") if $DEBUG;
 
   my $volumes   = $class->purestorage_list_volumes( $scfg, $vmid, $storeid );
   my @disk_list = map { $_->{ name } } @$volumes;
@@ -1601,7 +1599,7 @@ sub find_free_diskname {
 
 sub alloc_image {
   my ( $class, $storeid, $scfg, $vmid, $fmt, $name, $size ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::alloc_image\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::alloc_image") if $DEBUG;
 
   # Check for supported format (only 'raw' is allowed)
   die "Error :: Unsupported format ($fmt).\n" if $fmt ne 'raw';
@@ -1631,7 +1629,7 @@ sub alloc_image {
 
 sub free_image {
   my ( $class, $storeid, $scfg, $volname, $isBase ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::free_image\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::free_image") if $DEBUG;
 
   $class->deactivate_volume( $storeid, $scfg, $volname );
 
@@ -1643,14 +1641,14 @@ sub free_image {
 sub list_images {
   my ( $class, $storeid, $scfg, $vmid, $vollist, $cache ) = @_;
   set_debug_from_config( $scfg );
-  print "Debug :: list_images ($storeid, vmid=" . ( $vmid // 'all' ) . ")\n" if $DEBUG >= 1;
+  syslog('debug', "list_images ($storeid, vmid=" . ( $vmid // 'all' ) . ")") if $DEBUG >= 1;
 
   return $class->purestorage_list_volumes( $scfg, $vmid, $storeid, 0 );
 }
 
 sub status {
   my ( $class, $storeid, $scfg, $cache ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::status\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::status") if $DEBUG;
 
   my $total;
   my $used;
@@ -1658,7 +1656,7 @@ sub status {
   # If using pod with quota, get pod-specific capacity
   if ( defined $scfg->{ podname } && $scfg->{ podname } ne '' ) {
     my $podname = $scfg->{ podname };
-    print "Debug :: Getting pod quota for pod: $podname\n" if $DEBUG >= 2;
+    syslog('debug', "Getting pod quota for pod: $podname") if $DEBUG >= 2;
 
     my $action = {
       name   => 'get pod space',
@@ -1678,7 +1676,7 @@ sub status {
       $used  = $pod->{ space }->{ total_physical };
 
       my $quota_str = defined( $quota ) ? ( $quota > 0 ? $quota : 'unlimited' ) : 'not set';
-      print "Debug :: Pod quota_limit: $quota_str\n" if $DEBUG >= 2;
+      syslog('debug', "Pod quota_limit: $quota_str") if $DEBUG >= 2;
     } else {
       die "Error :: Pod \"$podname\" not found\n";
     }
@@ -1708,38 +1706,38 @@ sub status {
 sub activate_storage {
   my ( $class, $storeid, $scfg, $cache ) = @_;
   set_debug_from_config( $scfg );
-  print "Debug :: activate_storage ($storeid)\n" if $DEBUG >= 1;
+  syslog('debug', "activate_storage ($storeid)") if $DEBUG >= 1;
 
   return 1;
 }
 
 sub deactivate_storage {
   my ( $class, $storeid, $scfg, $cache ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::deactivate_storage\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::deactivate_storage") if $DEBUG;
 
   return 1;
 }
 
 sub volume_size_info {
   my ( $class, $scfg, $storeid, $volname, $timeout ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::volume_size_info\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::volume_size_info") if $DEBUG;
 
   my $volume = $class->purestorage_get_existing_volume_info( $scfg, $volname );
 
   #TODO: Consider moving this inside of purestorage_get_existing_volume_info()
   die "Error :: PureStorage API :: No volume data found for \"$volname\".\n" unless $volume;
 
-  print "Debug :: Provisioned: " . $volume->{ size } . ", Used: " . $volume->{ used } . "\n" if $DEBUG;
+  syslog('debug', "Provisioned: " . $volume->{ size } . ", Used: " . $volume->{ used }) if $DEBUG;
 
   return wantarray ? ( $volume->{ size }, 'raw', $volume->{ used }, undef ) : $volume->{ size };
 }
 
 sub map_volume {
   my ( $class, $storeid, $scfg, $volname, $snapname ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::map_volume\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::map_volume") if $DEBUG;
   my ( $path, $wwid ) = $class->purestorage_get_wwn( $scfg, $volname );
 
-  print "Debug :: Mapping volume \"$volname\" with WWN: " . uc( $wwid ) . ".\n" if $DEBUG;
+  syslog('debug', "Mapping volume \"$volname\" with WWN: " . uc( $wwid ) . ".") if $DEBUG;
 
   my $protocol = $scfg->{ protocol } // $default_protocol;
   if ( $protocol eq 'iscsi' || $protocol eq 'fc' ) {
@@ -1760,7 +1758,7 @@ sub map_volume {
   # we might end up with operational disk but without multipathing, e.g.
   # if unmapping was interrupted ('remove map' was already done, but slaves were not removed)
   if ( !multipath_check( $wwid ) ) {
-    print "Debug :: Adding multipath map for device \"$wwid\"\n" if $DEBUG;
+    syslog('debug', "Adding multipath map for device \"$wwid\"") if $DEBUG;
     exec_command( [ 'multipathd', 'add', 'map', $wwid ] );
 
     # Wait for multipath to be fully established
@@ -1774,7 +1772,7 @@ sub map_volume {
 
 sub unmap_volume {
   my ( $class, $storeid, $scfg, $volname, $snapname ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::unmap_volume\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::unmap_volume") if $DEBUG;
 
   my ( $path, $wwid ) = $class->purestorage_get_wwn( $scfg, $volname );
   return 0 unless $path ne '' && -b $path;
@@ -1782,7 +1780,7 @@ sub unmap_volume {
   my ( $device_path, @slaves ) = block_device_slaves( $path );
 
   # Ensure all data is flushed to disk for write-back cache environments
-  print "Debug :: Flushing filesystem and device buffers for $device_path\n" if $DEBUG >= 2;
+  syslog('debug', "Flushing filesystem and device buffers for $device_path") if $DEBUG >= 2;
   exec_command( ['sync'] );
   exec_command( [ 'blockdev', '--flushbufs', $device_path ] );
 
@@ -1793,24 +1791,24 @@ sub unmap_volume {
   exec_command( ['sync'] );
 
   if ( multipath_check( $wwid ) ) {
-    print "Debug :: Device \"$wwid\" is a multipath device. Proceeding with multipath removal.\n" if $DEBUG;
+    syslog('debug', "Device \"$wwid\" is a multipath device. Proceeding with multipath removal.") if $DEBUG;
 
     # remove the link
     exec_command( [ 'multipathd', 'remove', 'map', $wwid ] );
   } else {
-    print "Debug :: Device \"$wwid\" is not a multipath device. Skipping multipath removal.\n" if $DEBUG;
+    syslog('debug', "Device \"$wwid\" is not a multipath device. Skipping multipath removal.") if $DEBUG;
   }
 
   # Iterate through slaves and remove each device
   block_device_action( 'remove', @slaves );
 
-  print "Debug :: Device \"$wwid\" is removed.\n" if $DEBUG;
+  syslog('debug', "Device \"$wwid\" is removed.") if $DEBUG;
   return 1;
 }
 
 sub activate_volume {
   my ( $class, $storeid, $scfg, $volname, $snapname, $cache ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::activate_volume\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::activate_volume") if $DEBUG;
 
   $class->purestorage_volume_connection( $storeid, $scfg, $volname, 1 );
 
@@ -1820,7 +1818,7 @@ sub activate_volume {
 
 sub deactivate_volume {
   my ( $class, $storeid, $scfg, $volname, $snapname, $cache ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::deactivate_volume\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::deactivate_volume") if $DEBUG;
 
   $class->unmap_volume( $storeid, $scfg, $volname, $snapname );
 
@@ -1833,7 +1831,7 @@ sub deactivate_volume {
 
 sub volume_resize {
   my ( $class, $scfg, $storeid, $volname, $size, $running ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::volume_resize\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::volume_resize") if $DEBUG;
   warn "Debug :: New Size: $size\n"                                              if $DEBUG;
 
   return $class->purestorage_resize_volume( $scfg, $storeid, $volname, $size );
@@ -1841,7 +1839,7 @@ sub volume_resize {
 
 sub rename_volume {
   my ( $class, $scfg, $storeid, $source_volname, $target_vmid, $target_volname ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::rename_volume\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::rename_volume") if $DEBUG;
 
   die "Error :: not implemented in storage plugin \"$class\".\n" if $class->can( 'api' ) && $class->api() < 10;
 
@@ -1864,7 +1862,7 @@ sub rename_volume {
 
 sub volume_import {
   my ( $class, $scfg, $storeid, $fh, $volname, $format, $snapshot, $base_snapshot, $with_snapshots, $allow_rename ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::volume_import\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::volume_import") if $DEBUG;
   die "=> PVE::Storage::Custom::PureStoragePlugin::sub::volume_import not implemented!";
 
   return 1;
@@ -1872,7 +1870,7 @@ sub volume_import {
 
 sub volume_snapshot {
   my ( $class, $scfg, $storeid, $volname, $snap ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::volume_snapshot\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::volume_snapshot") if $DEBUG;
 
   $class->purestorage_snap_volume_create( $scfg, $storeid, $snap, $volname );
 
@@ -1881,7 +1879,7 @@ sub volume_snapshot {
 
 sub volume_snapshot_rollback {
   my ( $class, $scfg, $storeid, $volname, $snap ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::volume_snapshot_rollback\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::volume_snapshot_rollback") if $DEBUG;
 
   $class->purestorage_volume_restore( $scfg, $storeid, $volname, $volname, $snap, 1 );
 
@@ -1890,7 +1888,7 @@ sub volume_snapshot_rollback {
 
 sub volume_snapshot_delete {
   my ( $class, $scfg, $storeid, $volname, $snap ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::volume_snapshot_delete\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::volume_snapshot_delete") if $DEBUG;
 
   $class->purestorage_snap_volume_delete( $scfg, $storeid, $snap, $volname );
 
@@ -1899,7 +1897,7 @@ sub volume_snapshot_delete {
 
 sub volume_has_feature {
   my ( $class, $scfg, $feature, $storeid, $volname, $snapname, $running ) = @_;
-  print "Debug :: PVE::Storage::Custom::PureStoragePlugin::sub::volume_has_feature\n" if $DEBUG;
+  syslog('debug', "PVE::Storage::Custom::PureStoragePlugin::sub::volume_has_feature") if $DEBUG;
 
   my $features = {
     copy       => { current => 1, snap => 1 },    # full clone is possible
